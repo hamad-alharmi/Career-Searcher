@@ -3,6 +3,12 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -16,7 +22,30 @@ export async function registerRoutes(
       // Log the search for future analytics
       await storage.logSearch(input);
 
-      // MOCK DATA LOGIC - Placeholder for future AI integration
+      // Try OpenAI first using Replit AI Integrations
+      try {
+        const prompt = input.type === 'job_apps' 
+          ? `List 3 current or typical job applications/roles for the major or field: ${input.query}. Return ONLY a JSON object with a "results" array. Each item should have "title", "description", and "link" (use "#" for link).`
+          : input.type === 'related_careers'
+          ? `List 3 related career paths for someone with a major in: ${input.query}. Return ONLY a JSON object with a "results" array. Each item should have "title" and "description".`
+          : `Suggest 3 suitable college majors for someone who wants to be a: ${input.query}. Return ONLY a JSON object with a "results" array. Each item should have "title" and "description".`;
+
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" }
+        });
+
+        const content = response.choices[0].message.content;
+        if (content) {
+          const aiResults = JSON.parse(content);
+          return res.json(aiResults);
+        }
+      } catch (aiError) {
+        console.error("AI API error, falling back to mock data:", aiError);
+      }
+
+      // FALLBACK MOCK DATA LOGIC
       let results: { title: string; description: string; link?: string }[] = [];
 
       const queryLower = input.query.toLowerCase();
